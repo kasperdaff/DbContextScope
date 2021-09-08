@@ -16,15 +16,15 @@ The alternative of manually instantiating DataContext instances and manually pas
 
 It doesn't force any particular design pattern or application architecture to be used. It works beautifully with dependency injection. And it works beautifully without.
 
-#Using DataContextScope
+# Using DataContextScope
 
 I would highly recommend reading the following blog post first. It examines in great details the most commonly used approaches to manage DataContext instances and explains how `DataContextScope` addresses their shortcomings and simplifies DataContext management: [Managing DataContext the right way with Entity Framework 6: an in-depth guide](http://mehdi.me/ambient-dbcontext-in-ef6/). 
 
-###Overview
+# Overview
 
 This is the `DataContextScope` interface:
 
-```language-csharp
+```csharp
 public interface IDataContextScope : IDisposable
 {
     void SaveChanges();
@@ -41,7 +41,7 @@ Wondering why DataContextScope wasn't called "UnitOfWork" or "UnitOfWorkScope"? 
 
 You can instantiate a `DataContextScope` directly. Or you can take a dependency on `IDataContextScopeFactory`, which provides convenience methods to create a `DataContextScope` with the most common configurations:
 
-```language-csharp
+```csharp
 public interface IDataContextScopeFactory
 {
     IDataContextScope Create(DataContextScopeOption joiningOption = DataContextScopeOption.JoinExisting);
@@ -54,7 +54,7 @@ public interface IDataContextScopeFactory
 }
 ```
 
-###Typical usage
+# Typical usage
 With `DataContextScope`, your typical service method would look like this:
 
 ```language-csharp
@@ -71,7 +71,7 @@ public void MarkUserAsPremium(Guid userId)
 
 Within a `DataContextScope`, you can access the `DataContext` instances that the scope manages in two ways. You can get them via the `DataContextScope.DataContexts` property like this:
 
-```language-csharp
+```csharp
 public void SomeServiceMethod(Guid userId)
 {
     using (var dataContextScope = _dataContextScopeFactory.Create())
@@ -85,7 +85,7 @@ public void SomeServiceMethod(Guid userId)
 
 But that's of course only available in the method that created the `DataContextScope`. If you need to access the ambient `DataContext` instances anywhere else (e.g. in a repository class), you can just take a dependency on `IAmbientDataContextLocator`, which you would use like this:
 
-```language-csharp
+```csharp
 public class UserRepository : IUserRepository
 {
     private readonly IAmbientDataContextLocator _contextLocator;
@@ -107,10 +107,10 @@ Those `DataContext` instances are created lazily and the `DataContextScope` keep
 
 You'll note that the service method doesn't need to know which type of `DataContext` will be required during the course of the business transaction. It only needs to create a `DataContextScope` and any component that needs to access the database within that scope will request the type of `DataContext` they need. 
 
-###Nesting scopes
+# Nesting scopes
 A `DataContextScope` can of course be nested. Let's say that you already have a service method that can mark a user as a premium user like this:
 
-```language-csharp
+```csharp
 public void MarkUserAsPremium(Guid userId)
 {
     using (var dataContextScope = _dataContextScopeFactory.Create())
@@ -124,7 +124,7 @@ public void MarkUserAsPremium(Guid userId)
 
 You're implementing a new feature that requires being able to mark a group of users as premium within a single business transaction. You can easily do it like this:
 
-```language-csharp
+```csharp
 public void MarkGroupOfUsersAsPremium(IEnumerable<Guid> userIds)
 {
     using (var dataContextScope = _dataContextScopeFactory.Create())
@@ -150,7 +150,7 @@ public void MarkGroupOfUsersAsPremium(IEnumerable<Guid> userIds)
 
 This makes creating a service method that combines the logic of multiple other service methods trivial. 
 
-###Read-only scopes
+# Read-only scopes
 If a service method is read-only, having to call `SaveChanges()` on its `DataContextScope` before returning can be a pain. But not calling it isn't an option either as: 
 
 1. It will make code review and maintenance difficult (did you intend not to call `SaveChanges()` or did you forget to call it?) 
@@ -158,7 +158,7 @@ If a service method is read-only, having to call `SaveChanges()` on its `DataCon
 
 The `DataContextReadOnlyScope` class addresses this issue. This is its interface:
 
-```language-csharp
+```csharp
 public interface IDataContextReadOnlyScope : IDisposable
 {
     IDataContextCollection DataContexts { get; }
@@ -167,7 +167,7 @@ public interface IDataContextReadOnlyScope : IDisposable
 
 And this is how you use it:
 
-```language-csharp
+```csharp
 public int NumberPremiumUsers()
 {
     using (_dataContextScopeFactory.CreateReadOnly())
@@ -189,7 +189,7 @@ In general, parallelizing database access within a single business transaction h
 
 However, if you really need to start a parallel task within a `DataContextScope` (e.g. to perform some out-of-band background processing independently from the outcome of the business transaction), then you **must** suppress the ambient context before starting the parallel task. Which you can easily do like this:
 
-```language-csharp
+```csharp
 public void RandomServiceMethod()
 {
     using (var dataContextScope = _dataContextScopeFactory.Create())
@@ -215,7 +215,7 @@ public void RandomServiceMethod()
 }
 ```
 
-###Creating a non-nested DataContextScope
+# Creating a non-nested DataContextScope
 This is an advanced feature that I would expect most applications to never need. Tread carefully when using this as it can create tricky issues and quickly lead to a maintenance nightmare. 
 
 Sometimes, a service method may need to persist its changes to the underlying database regardless of the outcome of overall business transaction it may be part of. This would be the case if:
@@ -225,7 +225,7 @@ Sometimes, a service method may need to persist its changes to the underlying da
 
 In that case, you can pass a value of `DataContextScopeOption.ForceCreateNew` as the `joiningOption` parameter when creating a new `DataContextScope`. This will create a `DataContextScope` that will not join the ambient scope even if one exists:
 
-```language-csharp
+```csharp
 public void RandomServiceMethod()
 {
     using (var dataContextScope = _dataContextScopeFactory.Create(DataContextScopeOption.ForceCreateNew))
@@ -248,7 +248,7 @@ public void RandomServiceMethod()
 
 The major issue with doing this is that this service method will use separate `DataContext` instances than the ones used in the rest of that business transaction. Here are a few basic rules to always follow in that case in order to avoid weird bugs and maintenance nightmares:
 
-####1. Persistent entity returned by a service method must always be attached to the ambient context
+## 1. Persistent entity returned by a service method must always be attached to the ambient context
 
 If you force the creation of a new `DataContextScope` (and therefore of new `DataContext` instances) instead of joining the ambient one, your service method must **never** return persistent entities that were created / retrieved within that new scope. This would be completely unexpected and will lead to humongous complexity.
 
@@ -259,7 +259,7 @@ Instead, either:
 - Don't return persistent entities. This is the easiest, cleanest, most foolproof method. E.g. if your service creates a new domain model object, don't return it. Return its ID instead and let the client load the entity in its own `DataContext` instance if it needs the actual object.
 - If you absolutely need to return a persistent entity, switch back to the ambient context, load the entity you want to return in the ambient context and return that.
 
-####2. Upon exit, a service method must make sure that all modifications it made to persistent entities have been replicated in the parent scope
+## 2. Upon exit, a service method must make sure that all modifications it made to persistent entities have been replicated in the parent scope
 
 If your service method forces the creation of a new `DataContextScope` and then modifies persistent entities in that new scope, it must make sure that the parent ambient scope (if any) can "see" those modification when it returns. 
 
@@ -267,7 +267,7 @@ I.e. if the `DataContext` instances in the parent scope had already loaded the e
 
 The `DataContextScope` class has a handy helper method that makes this fairly painless:
 
-```language-csharp
+```csharp
 public void RandomServiceMethod(Guid accountId)
 {
 	// Forcing the creation of a new scope (i.e. we'll be using our 
@@ -294,7 +294,3 @@ public void RandomServiceMethod(Guid accountId)
     }
 }
 ```
-
-
-
-
